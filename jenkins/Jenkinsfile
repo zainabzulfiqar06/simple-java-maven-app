@@ -1,30 +1,72 @@
 pipeline {
-    agent {
-        docker {
-            image 'maven:3.9.0'
-            args '-v /root/.m2:/root/.m2'
-        }
+    agent any    
+    tools {
+        maven "Maven"
     }
     stages {
-        stage('Build') {
+        stage('Cloning repo') {
             steps {
-                sh 'mvn -B -DskipTests clean package'
+                script {
+                    echo 'Cloning the repo'
+                    sh 'git clone https://github.com/zainabzulfiqar06/simple-java-maven-app.git'
+                }
             }
+
         }
-        stage('Test') {
+        stage('Version Increment') {
             steps {
-                sh 'mvn test'
+                script {
+                    echo 'Incrementing application version...'
+                    dir('simple-java-maven-app') { 
+                        sh '''
+                        #!/bin/bash
+                        mvn build-helper:parse-version versions:set \
+                            -DnewVersion="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | awk -F. '{print $1"."$2"."$3+1}')" \
+                            versions:commit
+                        '''
+                    }
+                }
             }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
+        }   
+        stage('Build app') {
+            steps {
+                script {
+                    if (!fileExists('simple-java-maven-app')) {
+                        sh 'git clone https://github.com/zainabzulfiqar06/simple-java-maven-app.git'
+                    } else {
+                        echo "Repository already cloned, skipping cloning."
+                    }
+                }
+                dir('simple-java-maven-app') { 
+                    echo "Building app"
+                    sh 'mvn clean package'
                 }
             }
         }
-        stage('Deliver') {
+        stage('Building image') {
             steps {
-                sh './jenkins/scripts/deliver.sh'
+                script{
+                    echo 'Checking if Dockerfile exists...'
+                    sh 'ls -l simple-java-maven-app/'  
+
+                    echo 'Building the image'
+                     dir('simple-java-maven-app') {  
+                         sh 'docker build -t java-maven-app .'
+                     }
+                }
             }
         }
+        stage('Pushing to docker hub') {
+            steps {
+                script{
+                    echo 'Pushing the image to docker hub'
+                    withCredentials([usernamePassword(credentialsId:"dockerhub",passwordVariable:"dockerhubpass",usernameVariable:"dockerhubuser")]){
+                    sh "docker tag java-maven-app ${env.dockerhubuser}/java-maven-app:latest"
+                    sh "docker login -u ${env.dockerhubuser} -p ${env.dockerhubpass}"  
+                    sh "docker push ${env.dockerhubuser}/java-maven-app:latest "
+                    }
+                }
+            }
+        } 
     }
 }
