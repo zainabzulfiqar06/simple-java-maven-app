@@ -23,6 +23,7 @@ pipeline {
                         mvn build-helper:parse-version versions:set \
                             -DnewVersion="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | awk -F. '{print $1"."$2"."$3+1}')" \
                             versions:commit
+                        echo "New Version: $(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
                         '''
                     }
                 }
