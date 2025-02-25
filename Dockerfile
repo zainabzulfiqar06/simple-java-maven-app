@@ -6,4 +6,5 @@ FROM openjdk:17-jdk
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 9090
-CMD ["java", "-jar", "app.jar"]
+CMD  ["sh", "-c", "java -jar app.jar && tail -f /dev/null"]
+
