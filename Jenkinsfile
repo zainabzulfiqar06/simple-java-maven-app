@@ -1,17 +1,17 @@
 pipeline {
-    agent any    
+    agent any   
     tools {
         maven "Maven"
-    }
+    }   
     stages {
         stage('Cloning repo') {
             steps {
                 script {
                     echo 'Cloning the repo'
-                    sh 'git clone https://github.com/zainabzulfiqar06/simple-java-maven-app.git'
-                }
+                    sh "git clone https://github.com/zainabzulfiqar06/simple-java-maven-app.git"
+            
+                }        
             }
-
         }
         stage('Version Increment') {
             steps {
@@ -23,12 +23,14 @@ pipeline {
                         mvn build-helper:parse-version versions:set \
                             -DnewVersion="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | awk -F. '{print $1"."$2"."$3+1}')" \
                             versions:commit
-                        echo "New Version: $(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
                         '''
+                        def matcher = readFile('pom.xml') =~ '<version>(.+)</version>'
+                        def version = matcher[0][1]
+                        env.IMAGE_NAME="$version-$BUILD_NUMBER"
                     }
                 }
             }
-        }   
+        }        
         stage('Build app') {
             steps {
                 script {
@@ -44,30 +46,20 @@ pipeline {
                 }
             }
         }
-        stage('Building image') {
-            steps {
+        stage('building docker image'){
+            steps{
                 script{
-                    echo 'Checking if Dockerfile exists...'
-                    sh 'ls -l simple-java-maven-app/'  
-
-                    echo 'Building the image'
-                     dir('simple-java-maven-app') {  
-                         sh 'docker build -t java-maven-app .'
-                     }
-                }
-            }
-        }
-        stage('Pushing to docker hub') {
-            steps {
-                script{
-                    echo 'Pushing the image to docker hub'
                     withCredentials([usernamePassword(credentialsId:"dockerhub",passwordVariable:"dockerhubpass",usernameVariable:"dockerhubuser")]){
-                    sh "docker tag java-maven-app ${env.dockerhubuser}/java-maven-app:latest"
+                    sh "docker tag java-maven-app ${env.dockerhubuser}/java-maven-app:$IMAGE_NAME "
                     sh "docker login -u ${env.dockerhubuser} -p ${env.dockerhubpass}"  
-                    sh "docker push ${env.dockerhubuser}/java-maven-app:latest "
+                    sh "docker push ${env.dockerhubuser}/java-maven-app:$IMAGE_NAME "
+                    sh "docker stop java-maven-app || true"
+                    sh "docker rm java-maven-app || true"
+                    sh "docker run -d --name java-maven-app -p 9090:9090 ${env.dockerhubuser}/java-maven-app:$IMAGE_NAME"
+                    echo "Container started successfully!"
                     }
                 }
             }
-        } 
+        }
     }
 }
